@@ -211,7 +211,7 @@ public:
      * @param use_sudo Run with sudo (optional)
      * @return true on success
      */
-    bool execute(const std::string& command, std::string* output = nullptr, bool use_sudo = false, bool silent = false, int timeout_ms = 120000);
+    bool execute(const std::string& command, std::string* output = nullptr, bool use_sudo = false, bool silent = false, int timeout_ms = 120000, bool stream_output = false);
 
     /**
      * @brief Execute command in background on remote server (nohup)

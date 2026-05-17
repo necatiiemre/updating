@@ -21,14 +21,14 @@ SystemCommandExecutor::SystemCommandExecutor()
     , m_post_execute_callback(nullptr) {
 }
 
-CommandResult SystemCommandExecutor::execute(const std::string& command, int timeout_ms) {
+CommandResult SystemCommandExecutor::execute(const std::string& command, int timeout_ms, bool stream_output) {
     (void)timeout_ms; // Timeout not supported yet, may be added later
 
     if (m_pre_execute_callback) {
         m_pre_execute_callback(command);
     }
 
-    CommandResult result = executeInternal(command);
+    CommandResult result = executeInternal(command, stream_output);
 
     if (m_post_execute_callback) {
         m_post_execute_callback(command, result);
@@ -93,7 +93,7 @@ std::string SystemCommandExecutor::getWorkingDirectory() const {
     return m_working_directory;
 }
 
-CommandResult SystemCommandExecutor::executeInternal(const std::string& command) {
+CommandResult SystemCommandExecutor::executeInternal(const std::string& command, bool stream_output) {
     CommandResult result;
     std::string full_command = command;
 
@@ -117,9 +117,14 @@ CommandResult SystemCommandExecutor::executeInternal(const std::string& command)
         return result;
     }
 
-    // Read output
+    // Read output. fgets is line-buffered, so on every newline we both append
+    // to the captured buffer and (optionally) echo it to our own stdout so
+    // long-running remote commands surface progress in real time.
     while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
         output_stream << buffer.data();
+        if (stream_output) {
+            std::cout << buffer.data() << std::flush;
+        }
     }
 
     // Get command exit code

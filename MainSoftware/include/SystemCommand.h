@@ -70,9 +70,13 @@ public:
      * @brief Executes raw system command
      * @param command Command to execute (e.g., "server_on", "ls -la")
      * @param timeout_ms Timeout duration (milliseconds), 0 = unlimited
+     * @param stream_output If true, echo each line of the child's stdout to
+     *        our own stdout as it arrives instead of only returning the full
+     *        capture at the end. Useful for long-running remote commands
+     *        whose progress the operator needs to see live.
      * @return CommandResult Command result
      */
-    CommandResult execute(const std::string& command, int timeout_ms = 0);
+    CommandResult execute(const std::string& command, int timeout_ms = 0, bool stream_output = false);
 
     /**
      * @brief Executes a pre-registered command
@@ -156,7 +160,7 @@ private:
     /**
      * @brief Executes command with popen and captures output
      */
-    CommandResult executeInternal(const std::string& command);
+    CommandResult executeInternal(const std::string& command, bool stream_output = false);
 };
 
 // Global access shortcut
