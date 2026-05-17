@@ -133,8 +133,13 @@ std::string SSHDeployer::getLogPrefix() const {
 }
 
 std::string SSHDeployer::buildSSHCommand(const std::string& remote_command) const {
+    // -n redirects ssh's stdin from /dev/null. Without it, ssh inherits our
+    // stdin and silently drains keystrokes the operator types while a remote
+    // command is running, so the next std::getline() on the orchestrator
+    // returns an empty line. executeInteractive builds its own command with
+    // -t and intentionally does *not* use this helper.
     return "sshpass -p '" + m_password + "' "
-           "ssh -o StrictHostKeyChecking=no "
+           "ssh -n -o StrictHostKeyChecking=no "
            "-o ConnectTimeout=10 "
            + m_username + "@" + m_host + " "
            "\"" + remote_command + "\"";

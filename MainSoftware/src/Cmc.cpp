@@ -262,6 +262,13 @@ bool Cmc::configureSequence()
                     "CMC: test_starter did not return a recognized result.");
             }
 
+            // Reset cin state in case an earlier SSH call left it in EOF
+            // or otherwise unusable; without this, getline returns empty
+            // immediately and the operator never sees the prompt answered.
+            if (!std::cin.good())
+            {
+                std::cin.clear();
+            }
             std::cout << "CMC: Start the test anyway? [y/N]: " << std::flush;
             std::string ans;
             std::getline(std::cin, ans);
