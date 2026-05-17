@@ -227,12 +227,13 @@ bool Cmc::configureSequence()
         }
 
         std::string remote_dir = g_ssh_deployer_server.getRemoteDirectory();
-        // Same sudo-prime pattern used by runDpdkCmcInteractive: 'echo q | sudo -S -v'
-        // refreshes the sudo cache so the subsequent sudo ./test_starter does not
-        // block on a password prompt.
+        // execute() runs over SSH without a PTY, so the sudo-cache priming
+        // pattern used by the interactive DPDK path won't help us — the
+        // second sudo call would still try to grab a TTY. Pipe the password
+        // straight into sudo -S on the test_starter invocation instead.
         std::string cmd = "cd " + remote_dir + "/test_starter && "
-                          "echo 'q' | sudo -S -v && "
-                          "sudo ./test_starter --interface=ens1f0np0 --timeout="
+                          "echo 'q' | sudo -S ./test_starter "
+                          "--interface=ens1f0np0 --timeout="
                           + std::to_string(test_starter_timeout_s);
 
         std::cout << "CMC: Waiting for start-test trigger packet ("
