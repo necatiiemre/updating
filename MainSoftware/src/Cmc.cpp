@@ -15,6 +15,8 @@
 #include <filesystem>
 #include <csignal>
 #include <atomic>
+#include <limits>
+#include <termios.h>
 // 270V 9A
 
 // Global flag for Ctrl+C handling in DPDK CMC monitoring
@@ -260,13 +262,15 @@ bool Cmc::configureSequence()
                     "CMC: test_starter did not return a recognized result.");
             }
 
-            // Reset cin state in case an earlier SSH call left it in EOF
-            // or otherwise unusable; without this, getline returns empty
-            // immediately and the operator never sees the prompt answered.
-            if (!std::cin.good())
+            // Drain anything the operator typed (or that leaked through)
+            // while the SSH execute was running. Without this getline reads
+            // a stale newline immediately and aborts before the prompt is
+            // ever answered.
+            if (isatty(STDIN_FILENO))
             {
-                std::cin.clear();
+                tcflush(STDIN_FILENO, TCIFLUSH);
             }
+            std::cin.clear();
             std::cout << "CMC: Start the test anyway? [y/N]: " << std::flush;
             std::string ans;
             std::getline(std::cin, ans);
