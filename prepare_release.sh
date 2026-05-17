@@ -21,6 +21,7 @@
 #   ./prepare_release.sh pdf          # Prepare only PdfReportGenerator
 #   ./prepare_release.sh fwupdater    # Prepare only FirmwareUpdater
 #   ./prepare_release.sh flicker      # Prepare only Flicker_Detection
+#   ./prepare_release.sh test_starter # Prepare only test_starter
 #   ./prepare_release.sh assets       # Copy runtime assets only (config files)
 #
 
@@ -165,6 +166,30 @@ prepare_dpdk_cmc() {
     cp -r "$SCRIPT_DIR/dpdk_cmc/AteCumulus/AteTestMode/interfaces" "$PREBUILT_DIR/dpdk_cmc/AteCumulus/AteTestMode/"
 
     log_info "DPDK CMC prepared successfully: $PREBUILT_DIR/dpdk_cmc/dpdk_app"
+}
+
+prepare_test_starter() {
+    log_step "Preparing test_starter (compile on server, fetch binary)"
+
+    # Step 1: Copy source to server
+    log_info "Copying test_starter source to server..."
+    ssh_exec "rm -rf $SERVER_DIR/test_starter"
+    eval $SCP_R_CMD "$SCRIPT_DIR/test_starter" "$SERVER_USER@$SERVER_HOST:$SERVER_DIR/"
+
+    # Step 2: Build on server (matches glibc / libc used at runtime)
+    log_info "Building test_starter on server..."
+    ssh_exec "cd $SERVER_DIR/test_starter && make clean 2>/dev/null || true"
+    ssh_exec "cd $SERVER_DIR/test_starter && make -j\$(nproc)"
+
+    # Step 3: Create prebuilt directory
+    mkdir -p "$PREBUILT_DIR/test_starter"
+
+    # Step 4: Fetch compiled binary
+    log_info "Fetching compiled test_starter binary..."
+    eval $SCP_CMD "$SERVER_USER@$SERVER_HOST:$SERVER_DIR/test_starter/test_starter" "$PREBUILT_DIR/test_starter/test_starter"
+    chmod +x "$PREBUILT_DIR/test_starter/test_starter"
+
+    log_info "test_starter prepared: $PREBUILT_DIR/test_starter/test_starter"
 }
 
 prepare_remote_config_sender() {
@@ -405,6 +430,10 @@ main() {
         flicker|flicker_detection|Flicker_Detection|FlickerDetection)
             prepare_flicker_detection
             ;;
+        test_starter|TestStarter|teststarter)
+            test_server_connection
+            prepare_test_starter
+            ;;
         assets)
             prepare_assets
             ;;
@@ -420,11 +449,12 @@ main() {
             prepare_pdf_report_generator
             prepare_firmware_updater
             prepare_flicker_detection
+            prepare_test_starter
             prepare_assets
             ;;
         *)
             log_error "Unknown component: $COMPONENT"
-            echo "Usage: $0 [all|dpdk|dpdk_vmc|dpdk_cmc|rcs|main|pdf|fwupdater|flicker|assets]"
+            echo "Usage: $0 [all|dpdk|dpdk_vmc|dpdk_cmc|rcs|main|pdf|fwupdater|flicker|test_starter|assets]"
             exit 1
             ;;
     esac

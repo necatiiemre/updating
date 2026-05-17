@@ -213,14 +213,12 @@ bool Cmc::configureSequence()
     {
         const int test_starter_timeout_s = 300;
         DEBUG_LOG("CMC: Deploying test_starter on server...");
-        if (!g_ssh_deployer_server.deployAndBuild(
+        if (!g_ssh_deployer_server.deployPrebuilt(
                 "test_starter",
                 "test_starter",
-                /*run_after_build=*/false,
+                /*run_after_deploy=*/false,
                 /*use_sudo=*/false,
-                BuildSystem::MAKEFILE,
-                "",
-                "",
+                /*run_args=*/"",
                 /*run_in_background=*/false))
         {
             ErrorPrinter::error("TEST_STARTER", "CMC: Failed to deploy test_starter!");
