@@ -244,7 +244,19 @@ bool Cmc::configureSequence()
         // test_starter long before its own deadline expires.
         const int ssh_timeout_ms = (test_starter_timeout_s + 30) * 1000;
         std::string out;
-        g_ssh_deployer_server.execute(cmd, &out, false, false, ssh_timeout_ms);
+        g_ssh_deployer_server.execute(cmd, &out, false, true, ssh_timeout_ms);
+
+        // SSHDeployer hides successful command output behind DEBUG_LOG, but the
+        // operator needs to see test_starter's own log (banner + 'unexpected
+        // packet' notices + final result) to understand what happened. Print
+        // it here unconditionally before deciding what to do next.
+        if (!out.empty())
+        {
+            std::cout << "----- test_starter output -----\n"
+                      << out
+                      << (out.back() == '\n' ? "" : "\n")
+                      << "-------------------------------" << std::endl;
+        }
 
         bool got_ok      = out.find("TEST_STARTER_RESULT=OK")      != std::string::npos;
         bool got_timeout = out.find("TEST_STARTER_RESULT=TIMEOUT") != std::string::npos;
