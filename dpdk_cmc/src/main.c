@@ -445,7 +445,7 @@ int main(int argc, char const *argv[])
     psu_telem_stop();
 
     printf("Waiting 5 seconds for RX counters to flush...\n");
-    sleep(15);
+    sleep(5);
 
     // Wait for all DPDK workers to stop
     rte_eal_mp_wait_lcore();

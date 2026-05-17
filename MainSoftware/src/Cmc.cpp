@@ -339,6 +339,19 @@ bool Cmc::configureSequence()
         ErrorPrinter::warn("SSH", "CMC: Failed to fetch DPDK CMC log (file may not exist)");
     }
 
+    // Fetch MMMS handover output directory (files dumped by peer during shutdown)
+    DEBUG_LOG("CMC: Fetching MMMS logs from server...");
+    std::string local_mmms_dir = LogPaths::CMC() + "/mmms_logs";
+    std::filesystem::remove_all(local_mmms_dir);
+    if (g_ssh_deployer_server.fetchDirectory("/tmp/mmms_logs", local_mmms_dir))
+    {
+        std::cout << "CMC: MMMS logs saved to: " << local_mmms_dir << std::endl;
+    }
+    else
+    {
+        ErrorPrinter::warn("SSH", "CMC: Failed to fetch MMMS logs (directory may not exist)");
+    }
+
     if (!g_DeviceManager.enableOutput(PSUG300, false))
     {
         ErrorPrinter::error("PSU", "CMC: Failed to disable output on PSU G300!");

@@ -359,6 +359,33 @@ bool SSHDeployer::fetchFile(const std::string& remote_path, const std::string& l
     }
 }
 
+bool SSHDeployer::fetchDirectory(const std::string& remote_path, const std::string& local_path) {
+    DEBUG_LOG(getLogPrefix() << " Fetching directory " << remote_path << " -> " << local_path);
+
+    std::filesystem::path local_dir(local_path);
+    std::filesystem::path local_parent = local_dir.parent_path();
+    if (!local_parent.empty() && !std::filesystem::exists(local_parent)) {
+        std::filesystem::create_directories(local_parent);
+        DEBUG_LOG(getLogPrefix() << " Created local parent directory: " << local_parent.string());
+    }
+
+    std::string scp_cmd = "sshpass -p '" + m_password + "' "
+                          "scp -r -o StrictHostKeyChecking=no "
+                          "-o ConnectTimeout=30 "
+                          + m_username + "@" + m_host + ":" + remote_path + " "
+                          + local_path;
+
+    auto result = g_systemCommand.execute(scp_cmd);
+
+    if (result.success) {
+        DEBUG_LOG(getLogPrefix() << " Directory fetched successfully!");
+        return true;
+    } else {
+        std::cerr << getLogPrefix() << " Directory fetch failed: " << result.error << std::endl;
+        return false;
+    }
+}
+
 bool SSHDeployer::deployBuildRunAndFetchLog(const std::string& local_source_dir,
                                              const std::string& app_name,
                                              const std::string& run_args,
