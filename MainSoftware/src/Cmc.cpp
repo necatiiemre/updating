@@ -182,8 +182,6 @@ bool Cmc::configureSequence()
             "DPDK CMC will continue without PSU telemetry rows.");
     }
 
-    sleep(30);
-
     sleep(2);
     if (!g_cumulus.deployNetworkInterfaces(SSHDeployer::getPrebuiltRoot() + "/CumulusInterfaces/CMC/interfaces"))
     {
