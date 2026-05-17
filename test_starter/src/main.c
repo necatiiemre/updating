@@ -205,9 +205,19 @@ int main(int argc, char **argv)
     time_t        deadline = time(NULL) + timeout_s;
 
     while (1) {
-        time_t now     = time(NULL);
-        int    wait_ms = (deadline > now) ? (int)((deadline - now) * 1000) : 0;
-        int    pr      = poll(&pfd, 1, wait_ms);
+        time_t now = time(NULL);
+        if (now >= deadline) {
+            // Promiscuous capture on this interface keeps poll() satisfied
+            // with unrelated traffic, so we have to gate on the deadline
+            // ourselves — relying solely on poll's own timeout never
+            // returns pr == 0 when packets are continuously arriving.
+            close(s);
+            printf("TEST_STARTER_RESULT=TIMEOUT\n");
+            fflush(stdout);
+            return 0;
+        }
+        int wait_ms = (int)((deadline - now) * 1000);
+        int pr      = poll(&pfd, 1, wait_ms);
         if (pr < 0) {
             if (errno == EINTR) continue;
             perror("poll");
@@ -217,10 +227,8 @@ int main(int argc, char **argv)
             return 0;
         }
         if (pr == 0) {
-            close(s);
-            printf("TEST_STARTER_RESULT=TIMEOUT\n");
-            fflush(stdout);
-            return 0;
+            // poll's own timeout fired (no traffic at all).
+            continue;
         }
 
         uint8_t      buf[2048];
