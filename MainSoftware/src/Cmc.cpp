@@ -205,6 +205,81 @@ bool Cmc::configureSequence()
 
     sleep(1);
 
+    // Wait for the peer's "start-test" trigger packet before starting any
+    // test-side machinery. test_starter runs on the ATE server, listens on
+    // ens1f0np0 (still kernel-owned at this point — DPDK CMC hasn't taken
+    // it yet) and reports its result on stdout. On timeout we fall back to
+    // a yes/no prompt so an operator can still force the run.
+    {
+        const int test_starter_timeout_s = 300;
+        DEBUG_LOG("CMC: Deploying test_starter on server...");
+        if (!g_ssh_deployer_server.deployAndBuild(
+                "test_starter",
+                "test_starter",
+                /*run_after_build=*/false,
+                /*use_sudo=*/false,
+                BuildSystem::MAKEFILE,
+                "",
+                "",
+                /*run_in_background=*/false))
+        {
+            ErrorPrinter::error("TEST_STARTER", "CMC: Failed to deploy test_starter!");
+            shutdown.executeShutdown();
+            return false;
+        }
+
+        std::string remote_dir = g_ssh_deployer_server.getRemoteDirectory();
+        // Same sudo-prime pattern used by runDpdkCmcInteractive: 'echo q | sudo -S -v'
+        // refreshes the sudo cache so the subsequent sudo ./test_starter does not
+        // block on a password prompt.
+        std::string cmd = "cd " + remote_dir + "/test_starter && "
+                          "echo 'q' | sudo -S -v && "
+                          "sudo ./test_starter --interface=ens1f0np0 --timeout="
+                          + std::to_string(test_starter_timeout_s);
+
+        std::cout << "CMC: Waiting for start-test trigger packet ("
+                  << test_starter_timeout_s << "s timeout)..." << std::endl;
+
+        // Give the SSH wrapper enough headroom to cover the full listen window
+        // plus a small grace period — the default 2-minute timeout would kill
+        // test_starter long before its own deadline expires.
+        const int ssh_timeout_ms = (test_starter_timeout_s + 30) * 1000;
+        std::string out;
+        g_ssh_deployer_server.execute(cmd, &out, false, false, ssh_timeout_ms);
+
+        bool got_ok      = out.find("TEST_STARTER_RESULT=OK")      != std::string::npos;
+        bool got_timeout = out.find("TEST_STARTER_RESULT=TIMEOUT") != std::string::npos;
+
+        if (!got_ok)
+        {
+            if (got_timeout)
+            {
+                std::cout << "CMC: test_starter timed out without seeing the trigger packet."
+                          << std::endl;
+            }
+            else
+            {
+                ErrorPrinter::warn("TEST_STARTER",
+                    "CMC: test_starter did not return a recognized result.");
+            }
+
+            std::cout << "CMC: Start the test anyway? [y/N]: " << std::flush;
+            std::string ans;
+            std::getline(std::cin, ans);
+            if (ans.empty() || (ans[0] != 'y' && ans[0] != 'Y'))
+            {
+                std::cout << "CMC: Aborting at operator request." << std::endl;
+                shutdown.executeShutdown();
+                return false;
+            }
+            std::cout << "CMC: Continuing without trigger packet." << std::endl;
+        }
+        else
+        {
+            std::cout << "CMC: Trigger packet received, proceeding to test." << std::endl;
+        }
+    }
+
     // Start local FlickerDetection right before DPDK CMC. Parameters come
     // from FlickerDetectionConfig::Cmc; log + error frames + videos go to
     // LOGS/CMC/.

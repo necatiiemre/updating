@@ -506,7 +506,7 @@ bool SSHDeployer::deployBuildRunAndFetchLog(const std::string& local_source_dir,
 
 // ==================== Command Execution ====================
 
-bool SSHDeployer::execute(const std::string& command, std::string* output, bool use_sudo, bool silent) {
+bool SSHDeployer::execute(const std::string& command, std::string* output, bool use_sudo, bool silent, int timeout_ms) {
     std::string actual_command = command;
     if (use_sudo) {
         // echo password | sudo -S command
@@ -522,7 +522,7 @@ bool SSHDeployer::execute(const std::string& command, std::string* output, bool 
     }
 
     std::string ssh_cmd = buildSSHCommand(actual_command);
-    auto result = g_systemCommand.execute(ssh_cmd, 120000); // 2 minute timeout
+    auto result = g_systemCommand.execute(ssh_cmd, timeout_ms);
 
     if (output) {
         *output = result.output;
