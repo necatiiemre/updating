@@ -346,6 +346,11 @@ bool Cmc::configureSequence()
     if (g_ssh_deployer_server.fetchDirectory("/tmp/mmms_logs", local_mmms_dir))
     {
         std::cout << "CMC: MMMS logs saved to: " << local_mmms_dir << std::endl;
+        // Wipe remote dir so the next run does not blend with leftover files.
+        if (!g_ssh_deployer_server.execute("rm -rf /tmp/mmms_logs", nullptr, false, true))
+        {
+            ErrorPrinter::warn("SSH", "CMC: Failed to clean remote /tmp/mmms_logs");
+        }
     }
     else
     {
