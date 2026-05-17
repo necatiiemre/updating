@@ -91,17 +91,23 @@ static int open_listener(const char *ifname)
     return s;
 }
 
-static bool match_packet(const uint8_t *frame, size_t len,
-                         uint16_t aux_vlan, bool aux_vlan_valid)
+typedef enum {
+    CLASSIFY_IGNORE      = 0,  /* not VLAN 225 / VL-IDX 8009 — not for us */
+    CLASSIFY_MATCH       = 1,  /* exact trigger packet */
+    CLASSIFY_UNEXPECTED  = 2,  /* VLAN+VL-IDX match, payload does not */
+} classify_t;
+
+static classify_t classify_packet(const uint8_t *frame, size_t len,
+                                  uint16_t aux_vlan, bool aux_vlan_valid)
 {
     if (len < sizeof(struct ether_header)) {
-        return false;
+        return CLASSIFY_IGNORE;
     }
     const struct ether_header *eh = (const struct ether_header *)frame;
 
     uint16_t vl_idx = ((uint16_t)eh->ether_dhost[4] << 8) | eh->ether_dhost[5];
     if (vl_idx != EXPECTED_VL_IDX) {
-        return false;
+        return CLASSIFY_IGNORE;
     }
 
     uint16_t vlan_id;
@@ -111,13 +117,13 @@ static bool match_packet(const uint8_t *frame, size_t len,
     uint16_t ether_type = ntohs(eh->ether_type);
     if (ether_type == ETH_P_8021Q) {
         if (len < sizeof(struct ether_header) + sizeof(struct vlan_hdr_be)) {
-            return false;
+            return CLASSIFY_IGNORE;
         }
         const struct vlan_hdr_be *vh = (const struct vlan_hdr_be *)
             (frame + sizeof(struct ether_header));
         vlan_id = ntohs(vh->tci) & 0x0FFF;
         if (ntohs(vh->inner_proto) != ETH_P_IP) {
-            return false;
+            return CLASSIFY_IGNORE;
         }
         l3     = (const uint8_t *)vh + sizeof(struct vlan_hdr_be);
         l3_len = len - sizeof(struct ether_header) - sizeof(struct vlan_hdr_be);
@@ -125,40 +131,43 @@ static bool match_packet(const uint8_t *frame, size_t len,
         // Hardware-stripped VLAN — tag was lifted into tpacket_auxdata.
         vlan_id = aux_vlan & 0x0FFF;
         if (ether_type != ETH_P_IP) {
-            return false;
+            return CLASSIFY_IGNORE;
         }
         l3     = frame + sizeof(struct ether_header);
         l3_len = len - sizeof(struct ether_header);
     } else {
-        return false;
+        return CLASSIFY_IGNORE;
     }
 
     if (vlan_id != EXPECTED_VLAN) {
-        return false;
+        return CLASSIFY_IGNORE;
     }
 
+    // From here on the VLAN+VL-IDX both match — anything that fails below
+    // is "addressed to us but not the expected trigger", which the operator
+    // wants to see in the log.
     if (l3_len < 20 + 8) {
-        return false;
+        return CLASSIFY_UNEXPECTED;
     }
     const uint8_t *ip  = l3;
     int            ihl = (ip[0] & 0x0F) * 4;
     if (ihl < 20 || (size_t)ihl + 8 > l3_len) {
-        return false;
+        return CLASSIFY_UNEXPECTED;
     }
     if (ip[9] != IPPROTO_UDP) {
-        return false;
+        return CLASSIFY_UNEXPECTED;
     }
 
     const uint8_t *payload     = ip + ihl + 8;
     size_t         payload_len = l3_len - (size_t)ihl - 8;
 
     if (payload_len < EXPECTED_PAYLOAD_LEN) {
-        return false;
+        return CLASSIFY_UNEXPECTED;
     }
     if (memcmp(payload, EXPECTED_PAYLOAD, strlen(EXPECTED_PAYLOAD)) != 0) {
-        return false;
+        return CLASSIFY_UNEXPECTED;
     }
-    return true;
+    return CLASSIFY_MATCH;
 }
 
 int main(int argc, char **argv)
@@ -201,8 +210,9 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    struct pollfd pfd     = { .fd = s, .events = POLLIN };
+    struct pollfd pfd      = { .fd = s, .events = POLLIN };
     time_t        deadline = time(NULL) + timeout_s;
+    uint64_t      unexpected_count = 0;
 
     while (1) {
         time_t now = time(NULL);
@@ -266,11 +276,20 @@ int main(int argc, char **argv)
             }
         }
 
-        if (match_packet(buf, (size_t)n, aux_vlan, aux_valid)) {
+        classify_t cls = classify_packet(buf, (size_t)n, aux_vlan, aux_valid);
+        if (cls == CLASSIFY_MATCH) {
             close(s);
             printf("TEST_STARTER_RESULT=OK\n");
             fflush(stdout);
             return 0;
+        }
+        if (cls == CLASSIFY_UNEXPECTED) {
+            unexpected_count++;
+            printf("test_starter: unexpected packet on VLAN=%u VL-IDX=%u "
+                   "(len=%zd, count=%llu) — ignoring\n",
+                   EXPECTED_VLAN, EXPECTED_VL_IDX, n,
+                   (unsigned long long)unexpected_count);
+            fflush(stdout);
         }
     }
 }
