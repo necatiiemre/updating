@@ -262,18 +262,37 @@ bool Cmc::configureSequence()
                     "CMC: test_starter did not return a recognized result.");
             }
 
-            // Drain anything the operator typed (or that leaked through)
-            // while the SSH execute was running. Without this getline reads
-            // a stale newline immediately and aborts before the prompt is
-            // ever answered.
-            if (isatty(STDIN_FILENO))
-            {
-                tcflush(STDIN_FILENO, TCIFLUSH);
-            }
-            std::cin.clear();
-            std::cout << "CMC: Start the test anyway? [y/N]: " << std::flush;
+            // Talk to /dev/tty directly rather than std::cin. The orchestrator
+            // shells out to ssh/sshpass via popen, which leaves cin's view of
+            // the keyboard in a state we can't reliably reset (stale newline,
+            // EOF flag, redirected stdin, …). /dev/tty always points at the
+            // controlling terminal regardless of what happened to fd 0, so a
+            // fresh fopen here gives us a clean blocking read.
             std::string ans;
-            std::getline(std::cin, ans);
+            FILE *tty_in  = fopen("/dev/tty", "r");
+            FILE *tty_out = fopen("/dev/tty", "w");
+            if (tty_in && tty_out)
+            {
+                tcflush(fileno(tty_in), TCIFLUSH);
+                fprintf(tty_out, "CMC: Start the test anyway? [y/N]: ");
+                fflush(tty_out);
+                char buf[64];
+                if (fgets(buf, sizeof(buf), tty_in))
+                {
+                    ans = buf;
+                    if (!ans.empty() && ans.back() == '\n') ans.pop_back();
+                }
+            }
+            else
+            {
+                // No controlling terminal — fall back to cin so we at least
+                // don't crash; an automated run will just take the default.
+                std::cin.clear();
+                std::cout << "CMC: Start the test anyway? [y/N]: " << std::flush;
+                std::getline(std::cin, ans);
+            }
+            if (tty_in)  fclose(tty_in);
+            if (tty_out) fclose(tty_out);
             if (ans.empty() || (ans[0] != 'y' && ans[0] != 'Y'))
             {
                 std::cout << "CMC: Aborting at operator request." << std::endl;
